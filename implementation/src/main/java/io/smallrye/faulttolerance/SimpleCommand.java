@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 
 import com.netflix.hystrix.HystrixCircuitBreaker;
 
+import com.netflix.hystrix.exception.HystrixRuntimeException;
 import io.smallrye.faulttolerance.config.FaultToleranceOperation;
 
 /**
@@ -57,13 +58,18 @@ public class SimpleCommand extends BasicCommand {
      * @param operation Fault tolerance operation
      * @param listeners Command listeners
      */
-    protected SimpleCommand(Setter setter, ExecutionContextWithInvocationContext ctx, Supplier<Object> fallback, FaultToleranceOperation operation,
-            Iterable<CommandListener> listeners) {
+    protected SimpleCommand(Setter setter,
+                            ExecutionContextWithInvocationContext ctx,
+                            Supplier<Object> fallback,
+                            FaultToleranceOperation operation,
+                            Iterable<CommandListener> listeners,
+                            RetryContext retryContext) {
         super(setter);
         this.ctx = ctx;
         this.fallback = fallback;
         this.operation = operation;
         this.listeners = listeners;
+        this.retryContext = retryContext;
     }
 
     @Override
@@ -90,10 +96,11 @@ public class SimpleCommand extends BasicCommand {
             // Command failed but the fallback should not be used
             throw new FailureNotHandledException(failure);
         }
-        if (fallback == null) {
+        if (fallback != null && (retryContext == null || !retryContext.shouldRetryOn(failure))) {
+            return fallback.get();
+        } else {
             return super.getFallback();
         }
-        return fallback.get();
     }
 
     private boolean isFailureAssignableFromAnyFailureException(Throwable failure) {
@@ -118,6 +125,8 @@ public class SimpleCommand extends BasicCommand {
     private final ExecutionContextWithInvocationContext ctx;
 
     private final Iterable<CommandListener> listeners;
+
+    private final RetryContext retryContext;
 
     @Override
     FaultToleranceOperation getOperation() {

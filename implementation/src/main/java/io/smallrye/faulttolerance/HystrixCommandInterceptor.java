@@ -161,7 +161,7 @@ public class HystrixCommandInterceptor {
         SynchronousCircuitBreaker syncCircuitBreaker = getSynchronousCircuitBreaker(metadata);
 
         Function<Supplier<Object>, SimpleCommand> commandFactory = (fallback) -> new SimpleCommand(metadata.setter, ctx, fallback, metadata.operation,
-                listenersProvider.getCommandListeners());
+                listenersProvider.getCommandListeners(), retryContext);
 
         if (metadata.operation.isAsync()) {
             LOGGER.debugf("Queue up command for async execution: %s", metadata.operation);
@@ -184,11 +184,7 @@ public class HystrixCommandInterceptor {
                 LOGGER.debugf("Executing %s with %s", metadata.operation, retryContext);
             }
 
-            Supplier<Object> fallback = null;
-            if (retryContext == null || retryContext.isLastAttempt()) {
-                fallback = metadata.getFallback(ctx);
-            }
-            SimpleCommand command = commandFactory.apply(fallback);
+            SimpleCommand command = commandFactory.apply(metadata.getFallback(ctx));
 
             metricsCollector.beforeExecute(command);
 
