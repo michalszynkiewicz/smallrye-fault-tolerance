@@ -16,6 +16,7 @@
 package io.smallrye.faulttolerance.bulkhead;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
@@ -66,7 +67,9 @@ public class BulkheadTest {
         }
         endLatch.countDown();
         for (int i = 0; i < loop; i++) {
-            assertEquals("pong", futures.get(i).get());
+            System.out.println("future: " + futures.get(i));
+            assertFalse(futures.get(i).isCancelled());
+            assertEquals("the content check failed for future: " + futures.get(i), "pong", futures.get(i).get());
         }
     }
 

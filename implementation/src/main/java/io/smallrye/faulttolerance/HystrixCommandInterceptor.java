@@ -16,26 +16,21 @@
 
 package io.smallrye.faulttolerance;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.security.PrivilegedActionException;
-import java.time.Duration;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.function.Supplier;
-
-import javax.annotation.Priority;
-import javax.enterprise.inject.Intercepted;
-import javax.enterprise.inject.spi.Bean;
-import javax.inject.Inject;
-import javax.interceptor.AroundInvoke;
-import javax.interceptor.Interceptor;
-import javax.interceptor.InvocationContext;
-
+import com.netflix.hystrix.HystrixCircuitBreaker;
+import com.netflix.hystrix.HystrixCommand;
+import com.netflix.hystrix.HystrixCommand.Setter;
+import com.netflix.hystrix.HystrixCommandGroupKey;
+import com.netflix.hystrix.HystrixCommandKey;
+import com.netflix.hystrix.HystrixCommandProperties;
+import com.netflix.hystrix.HystrixThreadPoolKey;
+import com.netflix.hystrix.HystrixThreadPoolProperties;
+import com.netflix.hystrix.exception.HystrixRuntimeException;
+import com.netflix.hystrix.exception.HystrixRuntimeException.FailureType;
+import io.smallrye.faulttolerance.config.BulkheadConfig;
+import io.smallrye.faulttolerance.config.CircuitBreakerConfig;
+import io.smallrye.faulttolerance.config.FallbackConfig;
+import io.smallrye.faulttolerance.config.FaultToleranceOperation;
+import io.smallrye.faulttolerance.config.TimeoutConfig;
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
@@ -49,22 +44,24 @@ import org.eclipse.microprofile.faulttolerance.exceptions.FaultToleranceExceptio
 import org.eclipse.microprofile.faulttolerance.exceptions.TimeoutException;
 import org.jboss.logging.Logger;
 
-import com.netflix.hystrix.HystrixCircuitBreaker;
-import com.netflix.hystrix.HystrixCommand;
-import com.netflix.hystrix.HystrixCommand.Setter;
-import com.netflix.hystrix.HystrixCommandGroupKey;
-import com.netflix.hystrix.HystrixCommandKey;
-import com.netflix.hystrix.HystrixCommandProperties;
-import com.netflix.hystrix.HystrixThreadPoolKey;
-import com.netflix.hystrix.HystrixThreadPoolProperties;
-import com.netflix.hystrix.exception.HystrixRuntimeException;
-import com.netflix.hystrix.exception.HystrixRuntimeException.FailureType;
-
-import io.smallrye.faulttolerance.config.BulkheadConfig;
-import io.smallrye.faulttolerance.config.CircuitBreakerConfig;
-import io.smallrye.faulttolerance.config.FallbackConfig;
-import io.smallrye.faulttolerance.config.FaultToleranceOperation;
-import io.smallrye.faulttolerance.config.TimeoutConfig;
+import javax.annotation.Priority;
+import javax.enterprise.inject.Intercepted;
+import javax.enterprise.inject.spi.Bean;
+import javax.inject.Inject;
+import javax.interceptor.AroundInvoke;
+import javax.interceptor.Interceptor;
+import javax.interceptor.InvocationContext;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.security.PrivilegedActionException;
+import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * <h2>Implementation notes:</h2>
@@ -165,8 +162,14 @@ public class HystrixCommandInterceptor {
 
         if (metadata.operation.isAsync()) {
             LOGGER.debugf("Queue up command for async execution: %s", metadata.operation);
-            return new AsyncFuture(CompositeCommand.createAndQueue(() -> executeCommand(commandFactory, retryContext, metadata, ctx, syncCircuitBreaker),
-                    metadata.operation, ctx, metricsCollectorFactory.isMetricsEnabled() ? metricsCollectorFactory.getRegistry() : null));
+            return new AsyncFuture(
+                    CompositeCommand.createAndQueue(
+                            () -> executeCommand(commandFactory, retryContext, metadata, ctx, syncCircuitBreaker),
+                            metadata.operation,
+                            ctx,
+                            metricsCollectorFactory.isMetricsEnabled() ? metricsCollectorFactory.getRegistry() : null
+                    )
+            );
         } else {
             LOGGER.debugf("Sync execution: %s]", metadata.operation);
             return executeCommand(commandFactory, retryContext, metadata, ctx, syncCircuitBreaker);
@@ -182,6 +185,7 @@ public class HystrixCommandInterceptor {
         while (true) {
             if (retryContext != null) {
                 LOGGER.debugf("Executing %s with %s", metadata.operation, retryContext);
+                System.out.printf("Executing %s with %s\n", metadata.operation, retryContext); // mstodo remove
             }
 
             SimpleCommand command = commandFactory.apply(metadata.getFallback(ctx));
@@ -198,15 +202,19 @@ public class HystrixCommandInterceptor {
                     }
                 }
                 metricsCollector.afterSuccess(command);
+                System.out.println("returning " + res); // mstodo remove
                 return res;
             } catch (HystrixRuntimeException e) {
+                System.out.println("caught hystrix exception " + e); // mstodo remove
                 metricsCollector.onError(command, e);
                 Exception res = processHystrixRuntimeException(e, retryContext, metadata.operation.getMethod(), syncCircuitBreaker);
                 metricsCollector.onProcessedError(command, res);
                 if (res != null) {
+                    System.out.println("throwing up with " + res); // mstodo remove
                     throw res;
                 }
             } finally {
+                System.out.println("finally!"); // mstodo remove
                 metricsCollector.afterExecute(command);
             }
         }
