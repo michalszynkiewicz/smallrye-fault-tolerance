@@ -547,12 +547,16 @@ public class HystrixCommandInterceptor {
         }
 
         @Override
-        public Object get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, java.util.concurrent.TimeoutException {
+        public Object get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException {
             Future<Object> future;
             try {
                 future = unwrapFuture(delegate.get());
             } catch (ExecutionException e) {
-                throw unwrapExecutionException(e);
+                ExecutionException executionException = unwrapExecutionException(e);
+                if (isCancellation(executionException)) {
+                    throw new CancellationException();
+                }
+                throw executionException;
             }
             try {
                 return logResult(future, future.get(timeout, unit));
@@ -614,6 +618,7 @@ public class HystrixCommandInterceptor {
         }
 
         void cancel(boolean mayInterruptIfRunning) {
+            canceled.set(true);
             if (retryContext != null) {
                 retryContext.cancel();
             }
