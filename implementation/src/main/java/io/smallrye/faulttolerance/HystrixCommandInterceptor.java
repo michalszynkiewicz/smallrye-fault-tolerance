@@ -59,6 +59,7 @@ import java.lang.reflect.Method;
 import java.security.PrivilegedActionException;
 import java.time.Duration;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -522,16 +523,27 @@ public class HystrixCommandInterceptor {
             try {
                 future = unwrapFuture(delegate.get());
             } catch (ExecutionException e) {
-                throw unwrapExecutionException(e);
+                ExecutionException executionException = unwrapExecutionException(e);
+                if (isCancellation(executionException)) {
+                    throw new CancellationException();
+                }
+                throw executionException;
             }
             try {
                 return logResult(future, future.get());
             } catch (ExecutionException e) {
+                if (isCancellation(e)) {
+                    throw new CancellationException();
+                }
                 // Rethrow if completed exceptionally
                 throw e;
             } catch (Exception e) {
                 throw unableToUnwrap(future);
             }
+        }
+
+        private boolean isCancellation(ExecutionException executionException) {
+            return cancelator.canceled.get() && executionException.getCause() instanceof InterruptedException;
         }
 
         @Override
