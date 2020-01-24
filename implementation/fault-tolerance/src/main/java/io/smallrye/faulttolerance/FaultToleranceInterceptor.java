@@ -167,7 +167,7 @@ public class FaultToleranceInterceptor {
                         // the requestContextController.activate/deactivate pair here is the minimum
                         // to pass TCK; for anything serious, Context Propagation is required!
                         // TODO does this code work together with Context Propagation?
-                        requestContextController.activate();
+                        //                        requestContextController.activate();
                         //noinspection unchecked
                         ((CompletionStage<T>) invocationContext.proceed())
                                 .handle((value, error) -> {
@@ -181,7 +181,7 @@ public class FaultToleranceInterceptor {
                     } catch (Exception any) {
                         result.completeExceptionally(any);
                     } finally {
-                        requestContextController.deactivate();
+                        //                        requestContextController.deactivate();
                     }
                 });
                 return result;
